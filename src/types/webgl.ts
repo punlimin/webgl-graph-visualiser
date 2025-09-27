@@ -9,12 +9,13 @@ export const enum DrawModeType {
 export interface WebGLRef {
     glRef: RefObject<WebGL2RenderingContext | null>;
     fullBufRef: RefObject<WebGLBuffer | null>;
-    fullVaoRef: RefObject<WebGLVertexArrayObject | null>;
     coarseBufRef: RefObject<WebGLBuffer | null>;
-    coarseVaoRef: RefObject<WebGLVertexArrayObject | null>;
 
     fullCountRef: RefObject<number>;
     coarseCountRef: RefObject<number>;
 
     worldSize: RefObject<[number, number]>;
+
+    initBuffers?: (totalPoints: number, coarseCap: number) => void;
+    requestRender?: () => void;
 }

@@ -12,24 +12,21 @@ interface Props {
     useAutoLOD: boolean;
 }
 
+const LOD_THRESHOLD = 0.6;
+
 export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoLOD }: Props) {
-    const {
-        glRef,
-        fullBufRef,
-        fullVaoRef,
-        coarseBufRef,
-        coarseVaoRef,
-        fullCountRef,
-        coarseCountRef,
-        worldSize,
-    } = webglRef;
+    const { glRef, fullBufRef, coarseBufRef, fullCountRef, coarseCountRef, worldSize } = webglRef;
 
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const programRef = useRef<WebGLProgram | null>(null);
 
+    const fullVaoRef = useRef<WebGLVertexArrayObject | null>(null);
+    const coarseVaoRef = useRef<WebGLVertexArrayObject | null>(null);
+
     const panRef = useRef<[number, number]>([0, 0]);
     const scaleRef = useRef<number>(1);
     const dprRef = useRef<number>(1);
+    const dirty = useRef<boolean>(true);
 
     const uniformsRef = useRef<{
         u_canvas: WebGLUniformLocation | null;
@@ -38,6 +35,35 @@ export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoL
         u_pointSize: WebGLUniformLocation | null;
         u_color: WebGLUniformLocation | null;
     } | null>(null);
+
+    const resize = () => {
+        const canvas = canvasRef.current!;
+        const gl = glRef.current;
+        if (!gl) return;
+
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        dprRef.current = dpr;
+        const width = Math.max(1, Math.floor(canvas.clientWidth * dpr));
+        const height = Math.max(1, Math.floor(canvas.clientHeight * dpr));
+        if (canvas.width !== width || canvas.height !== height) {
+            canvas.width = width;
+            canvas.height = height;
+            dirty.current = true;
+        }
+        gl.viewport(0, 0, canvas.width, canvas.height);
+
+        // If no pan/scale set (initial), center world into canvas
+        if (scaleRef.current === 1 && panRef.current[0] === 0 && panRef.current[1] === 0) {
+            const [wW, wH] = worldSize.current;
+            const initialScale = Math.min(canvas.width / wW, canvas.height / wH);
+            scaleRef.current = initialScale;
+            panRef.current = [
+                canvas.width / 2 - (wW * initialScale) / 2,
+                canvas.height / 2 - (wH * initialScale) / 2,
+            ];
+            dirty.current = true;
+        }
+    };
 
     useEffect(() => {
         const canvas = canvasRef.current!;
@@ -51,16 +77,26 @@ export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoL
         const program = createGLProgram(gl, VERTEX_SOURCE, FRAGMENT_SOURCE);
         programRef.current = program;
 
-        // Buffers used when generating points
-        const fullBuf = gl.createBuffer();
-        const coarseBuf = gl.createBuffer();
-        fullBufRef.current = fullBuf;
-        coarseBufRef.current = coarseBuf;
+        // Buffers + VAOs
+        fullBufRef.current = gl.createBuffer();
+        coarseBufRef.current = gl.createBuffer();
+        fullVaoRef.current = gl.createVertexArray();
+        coarseVaoRef.current = gl.createVertexArray();
 
-        const fullVao = gl.createVertexArray();
-        const coarseVao = gl.createVertexArray();
-        fullVaoRef.current = fullVao;
-        coarseVaoRef.current = coarseVao;
+        gl.bindBuffer(gl.ARRAY_BUFFER, fullBufRef.current);
+        gl.bufferData(gl.ARRAY_BUFFER, 4, gl.DYNAMIC_DRAW);
+        gl.bindVertexArray(fullVaoRef.current);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 8, 0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, coarseBufRef.current);
+        gl.bufferData(gl.ARRAY_BUFFER, 4, gl.DYNAMIC_DRAW);
+        gl.bindVertexArray(coarseVaoRef.current);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 8, 0);
+
+        fullCountRef.current = 0;
+        coarseCountRef.current = 0;
 
         uniformsRef.current = {
             u_canvas: gl.getUniformLocation(program, "u_canvas"),
@@ -70,52 +106,44 @@ export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoL
             u_color: gl.getUniformLocation(program, "u_color"),
         };
 
-        // set GL state
+        // GL state
         gl.disable(gl.DEPTH_TEST);
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
+        // Expose helpers on webglRef
+        webglRef.initBuffers = (totalPoints: number, coarseCap: number) => {
+            gl.bindBuffer(gl.ARRAY_BUFFER, fullBufRef.current);
+            gl.bufferData(gl.ARRAY_BUFFER, totalPoints * 2 * 4, gl.DYNAMIC_DRAW);
+
+            // Resize coarse buffer
+            gl.bindBuffer(gl.ARRAY_BUFFER, coarseBufRef.current);
+            gl.bufferData(gl.ARRAY_BUFFER, coarseCap * 2 * 4, gl.DYNAMIC_DRAW);
+
+            fullCountRef.current = 0;
+            coarseCountRef.current = 0;
+            dirty.current = true;
+        };
+
+        webglRef.requestRender = () => {
+            dirty.current = true;
+        };
+
+        // Interaction
         let dragging = false;
         let last: [number, number] | null = null;
-
-        function resize() {
-            if (!gl) {
-                return;
-            }
-
-            const dpr = Math.min(window.devicePixelRatio || 1, 2);
-            dprRef.current = dpr;
-            const width = Math.max(1, Math.floor(canvas.clientWidth * dpr));
-            const height = Math.max(1, Math.floor(canvas.clientHeight * dpr));
-            if (canvas.width !== width || canvas.height !== height) {
-                canvas.width = width;
-                canvas.height = height;
-            }
-            gl.viewport(0, 0, canvas.width, canvas.height);
-
-            // If no pan/scale set (initial), center world into canvas
-            if (scaleRef.current === 1 && panRef.current[0] === 0 && panRef.current[1] === 0) {
-                const [wW, wH] = worldSize.current;
-                const initialScale = Math.min(canvas.width / wW, canvas.height / wH);
-                scaleRef.current = initialScale;
-                panRef.current = [
-                    canvas.width / 2 - (wW * initialScale) / 2,
-                    canvas.height / 2 - (wH * initialScale) / 2,
-                ];
-            }
-        }
 
         function mouseWheel(e: WheelEvent) {
             e.preventDefault();
             const rect = canvas.getBoundingClientRect();
             const cx = (e.clientX - rect.left) * dprRef.current;
             const cy = (e.clientY - rect.top) * dprRef.current;
-            const k = Math.exp(-e.deltaY * 0.0012); // zoom factor
+            const k = Math.exp(-e.deltaY * 0.0012);
             const newScale = Math.max(0.0001, Math.min(10_000, scaleRef.current * k));
-            // zoom about cursor point
             panRef.current[0] = cx - (cx - panRef.current[0]) * (newScale / scaleRef.current);
             panRef.current[1] = cy - (cy - panRef.current[1]) * (newScale / scaleRef.current);
             scaleRef.current = newScale;
+            dirty.current = true;
         }
 
         function pointerDown(e: PointerEvent) {
@@ -136,7 +164,11 @@ export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoL
             panRef.current[0] += dx;
             panRef.current[1] += dy;
             last = [e.clientX, e.clientY];
+            dirty.current = true;
         }
+
+        const observer = new ResizeObserver(() => resize());
+        observer.observe(canvas);
 
         window.addEventListener("resize", resize);
         canvas.addEventListener("wheel", mouseWheel, { passive: false });
@@ -146,29 +178,31 @@ export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoL
 
         resize();
 
-        let requestAnimFrame = 0;
+        let requestAnimFrameId = 0;
         function render() {
-            requestAnimFrame = requestAnimationFrame(render);
+            requestAnimFrameId = requestAnimationFrame(render);
+
+            const gl = glRef.current;
+
             if (!gl) return;
-            resize();
+            if (!dirty.current) return;
+            dirty.current = false;
 
             gl.clearColor(0.99, 0.99, 0.985, 1);
             gl.clear(gl.COLOR_BUFFER_BIT);
 
             gl.useProgram(program);
 
-            // common uniforms
             const u = uniformsRef.current!;
             gl.uniform2f(u.u_canvas, canvas.width, canvas.height);
             gl.uniform2f(u.u_pan, panRef.current[0], panRef.current[1]);
             gl.uniform1f(u.u_scale, scaleRef.current);
             gl.uniform1f(u.u_pointSize, Math.max(1, pointSize * dprRef.current));
-            gl.uniform4f(u.u_color, 0.15, 0.45, 0.35, 0.9); // sage-ish
+            gl.uniform4f(u.u_color, 0.15, 0.45, 0.35, 0.9);
 
-            // Decide draw mode
             const wantCoarse =
                 drawMode === "coarse" ||
-                (drawMode === "auto" && useAutoLOD && scaleRef.current < 0.6);
+                (drawMode === "auto" && useAutoLOD && scaleRef.current < LOD_THRESHOLD);
 
             if (wantCoarse) {
                 const cc = coarseCountRef.current;
@@ -189,14 +223,16 @@ export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoL
 
         render();
 
-        // cleanup on unmount
         return () => {
-            cancelAnimationFrame(requestAnimFrame);
+            cancelAnimationFrame(requestAnimFrameId);
+            observer.disconnect();
             window.removeEventListener("resize", resize);
             canvas.removeEventListener("wheel", mouseWheel);
             canvas.removeEventListener("pointerdown", pointerDown);
             window.removeEventListener("pointerup", pointerUp);
             window.removeEventListener("pointermove", pointerMove);
+            webglRef.initBuffers = undefined;
+            webglRef.requestRender = undefined;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [pointSize, drawMode, useAutoLOD]);

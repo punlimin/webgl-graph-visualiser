@@ -1,10 +1,9 @@
 "use client";
 
-import { WORKER_CODE } from "@/config/webglConfig";
+import { WORKER_CODE } from "../../../public/worker";
 import { DrawModeType, WebGLRef } from "@/types/webgl";
 import { clampInput } from "@/utils/numberUtils";
 import { useEffect, useRef, useState } from "react";
-import { Sector } from "recharts";
 
 interface Props {
     webglRef: WebGLRef;
@@ -28,16 +27,7 @@ export default function Controls({
     useAutoLOD,
     setUseAutoLOD,
 }: Props) {
-    const {
-        glRef,
-        fullBufRef,
-        fullVaoRef,
-        coarseBufRef,
-        coarseVaoRef,
-        fullCountRef,
-        coarseCountRef,
-        worldSize,
-    } = webglRef;
+    const { glRef, fullBufRef, coarseBufRef, fullCountRef, coarseCountRef, worldSize } = webglRef;
 
     const [totalPoints, setTotalPoints] = useState<number>(MAX_TOTAL_POINTS);
     const [chunkSize, setChunkSize] = useState<number>(MAX_CHUNK_SIZE);
@@ -63,31 +53,14 @@ export default function Controls({
         const total = Math.max(1, Math.floor(totalPoints));
         const coarseCap = Math.ceil(total / Math.max(1, coarseRate));
 
-        // prepare full buffer
-        gl.bindBuffer(gl.ARRAY_BUFFER, fullBufRef.current);
-        const fullBytes = total * 2 * 4; // x,y floats
-        gl.bufferData(gl.ARRAY_BUFFER, fullBytes, gl.DYNAMIC_DRAW);
+        if (typeof webglRef.initBuffers === "function") {
+            webglRef.initBuffers(total, coarseCap);
+        } else {
+            console.warn("GL not ready yet");
+            return;
+        }
 
-        // setup full VAO
-        gl.bindVertexArray(fullVaoRef.current);
-        gl.bindBuffer(gl.ARRAY_BUFFER, fullBufRef.current);
-        gl.enableVertexAttribArray(0);
-        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 8, 0);
-
-        // coarse buffer
-        gl.bindBuffer(gl.ARRAY_BUFFER, coarseBufRef.current);
-        const coarseBytes = coarseCap * 2 * 4;
-        gl.bufferData(gl.ARRAY_BUFFER, coarseBytes, gl.DYNAMIC_DRAW);
-
-        // setup coarse VAO
-        gl.bindVertexArray(coarseVaoRef.current);
-        gl.bindBuffer(gl.ARRAY_BUFFER, coarseBufRef.current);
-        gl.enableVertexAttribArray(0);
-        gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 8, 0);
-
-        // reset counts
-        fullCountRef.current = 0;
-        coarseCountRef.current = 0;
+        setGenerating(true);
         setLoadedPoints(0);
         setCoarseCount(0);
 
@@ -96,8 +69,6 @@ export default function Controls({
         const url = URL.createObjectURL(blob);
         const w = new Worker(url);
         workerRef.current = w;
-
-        setGenerating(true);
 
         w.onmessage = (ev: MessageEvent) => {
             const msg = ev.data || {};
@@ -109,6 +80,7 @@ export default function Controls({
                 gl.bufferSubData(gl.ARRAY_BUFFER, offset, arr);
                 fullCountRef.current += arr.length / 2;
                 setLoadedPoints(p => p + arr.length / 2);
+                webglRef.requestRender?.();
             } else if (msg.type === "coarse" && msg.buffer) {
                 const arr = new Float32Array(msg.buffer);
                 const offset = coarseCountRef.current * 2 * 4;
@@ -116,6 +88,7 @@ export default function Controls({
                 gl.bufferSubData(gl.ARRAY_BUFFER, offset, arr);
                 coarseCountRef.current += arr.length / 2;
                 setCoarseCount(coarseCountRef.current);
+                webglRef.requestRender?.();
             } else if (msg.type === "progress") {
                 // lightweight progress update
                 if (msg.loaded) setLoadedPoints(msg.loaded);
@@ -124,6 +97,7 @@ export default function Controls({
                 setLoadedPoints(fullCountRef.current);
                 // revoke worker URL
                 URL.revokeObjectURL(url);
+                webglRef.requestRender?.();
             }
         };
 
@@ -161,6 +135,8 @@ export default function Controls({
             coarseCountRef.current = 0;
             setCoarseCount(0);
         }
+
+        webglRef.requestRender?.();
     };
 
     useEffect(() => {
@@ -231,7 +207,9 @@ export default function Controls({
                             min={2}
                             max={20}
                             value={pointSize}
-                            onChange={e => setPointSize(Number(e.target.value))}
+                            onChange={e => {
+                                setPointSize(Number(e.target.value));
+                            }}
                             className="w-full text-primary-800"
                         />
                     </label>

@@ -12,9 +12,7 @@ export default function ScatterPlotPage() {
 
     const glRef = useRef<WebGL2RenderingContext | null>(null);
     const fullBufRef = useRef<WebGLBuffer | null>(null);
-    const fullVaoRef = useRef<WebGLVertexArrayObject | null>(null);
     const coarseBufRef = useRef<WebGLBuffer | null>(null);
-    const coarseVaoRef = useRef<WebGLVertexArrayObject | null>(null);
 
     const fullCountRef = useRef<number>(0);
     const coarseCountRef = useRef<number>(0);
@@ -24,9 +22,7 @@ export default function ScatterPlotPage() {
     const webglRef: WebGLRef = {
         glRef,
         fullBufRef,
-        fullVaoRef,
         coarseBufRef,
-        coarseVaoRef,
         fullCountRef,
         coarseCountRef,
         worldSize,
