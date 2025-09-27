@@ -3,7 +3,7 @@
 import { FRAGMENT_SOURCE, VERTEX_SOURCE } from "@/config/webglConfig";
 import { DrawModeType, WebGLRef } from "@/types/webgl";
 import { createGLProgram } from "@/utils/webglUtils";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 interface Props {
     webglRef: WebGLRef;
@@ -28,6 +28,8 @@ export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoL
     const dprRef = useRef<number>(1);
     const dirty = useRef<boolean>(true);
 
+    const [currentDrawMode, setCurrentDrawMode] = useState<DrawModeType>();
+
     const uniformsRef = useRef<{
         u_canvas: WebGLUniformLocation | null;
         u_pan: WebGLUniformLocation | null;
@@ -39,7 +41,7 @@ export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoL
     const resize = () => {
         const canvas = canvasRef.current!;
         const gl = glRef.current;
-        if (!gl) return;
+        if (!canvasRef.current || !gl) return;
 
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         dprRef.current = dpr;
@@ -201,20 +203,24 @@ export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoL
             gl.uniform4f(u.u_color, 0.15, 0.45, 0.35, 0.9);
 
             const wantCoarse =
-                drawMode === "coarse" ||
-                (drawMode === "auto" && useAutoLOD && scaleRef.current < LOD_THRESHOLD);
+                drawMode === DrawModeType.COARSE ||
+                (drawMode === DrawModeType.AUTO && useAutoLOD && scaleRef.current < LOD_THRESHOLD);
 
             if (wantCoarse) {
                 const cc = coarseCountRef.current;
                 if (cc > 0) {
                     gl.bindVertexArray(coarseVaoRef.current);
                     gl.drawArrays(gl.POINTS, 0, cc);
+
+                    setCurrentDrawMode(DrawModeType.COARSE);
                 }
             } else {
                 const fc = fullCountRef.current;
                 if (fc > 0) {
                     gl.bindVertexArray(fullVaoRef.current);
                     gl.drawArrays(gl.POINTS, 0, fc);
+
+                    setCurrentDrawMode(DrawModeType.FULL);
                 }
             }
 
@@ -247,11 +253,9 @@ export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoL
                 <canvas ref={canvasRef} className="w-full h-[70vh] block bg-primary-50" />
             </div>
 
-            <div className="mt-3 px-3 text-xs text-primary-600">
-                This demo streams points from a worker and shows a coarse sample quickly so you get
-                an overview while the full set loads. The coarse/full switching is controlled by
-                zoom.
-            </div>
+            <div className="mt-3 px-3 text-xs text-primary-500">{`Current Draw Mode: ${
+                currentDrawMode?.toUpperCase() ?? "-"
+            }`}</div>
         </>
     );
 }

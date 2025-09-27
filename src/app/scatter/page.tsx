@@ -55,8 +55,10 @@ export default function ScatterPlotPage() {
                 </section>
             </main>
 
-            <footer className="max-w-6xl mx-auto mt-6 text-xs text-primary-500">
-                Built with WebGL2 • Progressive loading • Simple LOD
+            <footer className="max-w-6xl mx-auto mt-3 text-xs text-primary-600">
+                This demo streams points from a worker and shows a coarse sample quickly so you get
+                an overview while the full set loads. The coarse/full switching is controlled by
+                zoom when Auto LOD is enabled.
             </footer>
         </>
     );
