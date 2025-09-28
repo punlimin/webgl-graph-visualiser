@@ -302,7 +302,7 @@ export default function CanvasRenderer({
                 <div className="text-xs text-primary-500">Tip: use Auto LOD for fast overview</div>
             </div>
             <div className="relative flex-1 rounded-xl overflow-hidden border border-primary-50">
-                <canvas ref={canvasRef} className="w-full h-full block bg-primary-50" />
+                <canvas ref={canvasRef} className="w-full h-[70vh] block bg-primary-50" />
                 {showDebug && (
                     <DebugOverlay
                         fps={fps}
