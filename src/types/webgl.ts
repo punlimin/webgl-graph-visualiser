@@ -1,4 +1,5 @@
 import { RefObject } from "react";
+import RBush from "rbush";
 
 export const enum DrawModeType {
     AUTO = "auto",
@@ -16,6 +17,16 @@ export interface WebGLRef {
 
     worldSize: RefObject<[number, number]>;
 
-    initBuffers?: (totalPoints: number, coarseCap: number) => void;
+    rTreeRef: RefObject<RBush<PointItem>>;
+    rCoarseTreeRef: RefObject<RBush<PointItem>>;
+
     requestRender?: () => void;
+}
+
+export interface PointItem {
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+    data: [number, number];
 }

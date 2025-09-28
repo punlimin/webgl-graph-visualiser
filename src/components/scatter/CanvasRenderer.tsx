@@ -1,8 +1,9 @@
 "use client";
 
 import { FRAGMENT_SOURCE, VERTEX_SOURCE } from "@/config/webglConfig";
-import { DrawModeType, WebGLRef } from "@/types/webgl";
+import { DrawModeType, PointItem, WebGLRef } from "@/types/webgl";
 import { createGLProgram } from "@/utils/webglUtils";
+import RBush from "rbush";
 import React, { useEffect, useRef, useState } from "react";
 
 interface Props {
@@ -15,7 +16,16 @@ interface Props {
 const LOD_THRESHOLD = 0.6;
 
 export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoLOD }: Props) {
-    const { glRef, fullBufRef, coarseBufRef, fullCountRef, coarseCountRef, worldSize } = webglRef;
+    const {
+        glRef,
+        fullBufRef,
+        coarseBufRef,
+        fullCountRef,
+        coarseCountRef,
+        worldSize,
+        rTreeRef,
+        rCoarseTreeRef,
+    } = webglRef;
 
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const programRef = useRef<WebGLProgram | null>(null);
@@ -113,20 +123,6 @@ export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoL
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-        // Expose helpers on webglRef
-        webglRef.initBuffers = (totalPoints: number, coarseCap: number) => {
-            gl.bindBuffer(gl.ARRAY_BUFFER, fullBufRef.current);
-            gl.bufferData(gl.ARRAY_BUFFER, totalPoints * 2 * 4, gl.DYNAMIC_DRAW);
-
-            // Resize coarse buffer
-            gl.bindBuffer(gl.ARRAY_BUFFER, coarseBufRef.current);
-            gl.bufferData(gl.ARRAY_BUFFER, coarseCap * 2 * 4, gl.DYNAMIC_DRAW);
-
-            fullCountRef.current = 0;
-            coarseCountRef.current = 0;
-            dirty.current = true;
-        };
-
         webglRef.requestRender = () => {
             dirty.current = true;
         };
@@ -169,6 +165,34 @@ export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoL
             dirty.current = true;
         }
 
+        function getVisiblePoints(tree: RBush<PointItem>): Float32Array {
+            const [panX, panY] = panRef.current;
+            const scale = scaleRef.current;
+
+            const width = canvas.width;
+            const height = canvas.height;
+
+            // Convert viewport -> world coords
+            const viewMinX = (0 - panX) / scale;
+            const viewMinY = (0 - panY) / scale;
+            const viewMaxX = (width - panX) / scale;
+            const viewMaxY = (height - panY) / scale;
+
+            const visibleItems = tree.search({
+                minX: viewMinX,
+                minY: viewMinY,
+                maxX: viewMaxX,
+                maxY: viewMaxY,
+            });
+
+            const result = new Float32Array(visibleItems.length * 2);
+            visibleItems.forEach((p, i) => {
+                result[i * 2] = p.data[0];
+                result[i * 2 + 1] = p.data[1];
+            });
+            return result;
+        }
+
         const observer = new ResizeObserver(() => resize());
         observer.observe(canvas);
 
@@ -185,18 +209,16 @@ export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoL
             requestAnimFrameId = requestAnimationFrame(render);
 
             const gl = glRef.current;
-
-            if (!gl) return;
-            if (!dirty.current) return;
+            if (!gl || !dirty.current) return;
             dirty.current = false;
 
             gl.clearColor(0.99, 0.99, 0.985, 1);
             gl.clear(gl.COLOR_BUFFER_BIT);
 
-            gl.useProgram(program);
+            gl.useProgram(programRef.current!);
 
             const u = uniformsRef.current!;
-            gl.uniform2f(u.u_canvas, canvas.width, canvas.height);
+            gl.uniform2f(u.u_canvas, canvasRef.current!.width, canvasRef.current!.height);
             gl.uniform2f(u.u_pan, panRef.current[0], panRef.current[1]);
             gl.uniform1f(u.u_scale, scaleRef.current);
             gl.uniform1f(u.u_pointSize, Math.max(1, pointSize * dprRef.current));
@@ -207,19 +229,25 @@ export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoL
                 (drawMode === DrawModeType.AUTO && useAutoLOD && scaleRef.current < LOD_THRESHOLD);
 
             if (wantCoarse) {
-                const cc = coarseCountRef.current;
-                if (cc > 0) {
-                    gl.bindVertexArray(coarseVaoRef.current);
-                    gl.drawArrays(gl.POINTS, 0, cc);
+                const visible = getVisiblePoints(rCoarseTreeRef.current);
+                const numPoints = visible.length / 2;
+                if (numPoints > 0) {
+                    gl.bindBuffer(gl.ARRAY_BUFFER, coarseBufRef.current);
+                    gl.bufferData(gl.ARRAY_BUFFER, visible, gl.DYNAMIC_DRAW);
 
+                    gl.bindVertexArray(coarseVaoRef.current);
+                    gl.drawArrays(gl.POINTS, 0, numPoints);
                     setCurrentDrawMode(DrawModeType.COARSE);
                 }
             } else {
-                const fc = fullCountRef.current;
-                if (fc > 0) {
-                    gl.bindVertexArray(fullVaoRef.current);
-                    gl.drawArrays(gl.POINTS, 0, fc);
+                const visible = getVisiblePoints(rTreeRef.current);
+                const numPoints = visible.length / 2;
+                if (numPoints > 0) {
+                    gl.bindBuffer(gl.ARRAY_BUFFER, fullBufRef.current);
+                    gl.bufferData(gl.ARRAY_BUFFER, visible, gl.DYNAMIC_DRAW);
 
+                    gl.bindVertexArray(fullVaoRef.current);
+                    gl.drawArrays(gl.POINTS, 0, numPoints);
                     setCurrentDrawMode(DrawModeType.FULL);
                 }
             }
@@ -237,7 +265,6 @@ export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoL
             canvas.removeEventListener("pointerdown", pointerDown);
             window.removeEventListener("pointerup", pointerUp);
             window.removeEventListener("pointermove", pointerMove);
-            webglRef.initBuffers = undefined;
             webglRef.requestRender = undefined;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps

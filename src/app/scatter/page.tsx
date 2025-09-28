@@ -2,8 +2,10 @@
 
 import CanvasRenderer from "@/components/scatter/CanvasRenderer";
 import Controls from "@/components/scatter/Controls";
-import { DrawModeType, WebGLRef } from "@/types/webgl";
-import { useRef, useState } from "react";
+import { DrawModeType, PointItem, WebGLRef } from "@/types/webgl";
+import { useEffect, useRef, useState } from "react";
+import RBush from "rbush";
+import { MAX_TOTAL_POINTS } from "@/config/webglConfig";
 
 export default function ScatterPlotPage() {
     const [pointSize, setPointSize] = useState<number>(4);
@@ -13,6 +15,9 @@ export default function ScatterPlotPage() {
     const glRef = useRef<WebGL2RenderingContext | null>(null);
     const fullBufRef = useRef<WebGLBuffer | null>(null);
     const coarseBufRef = useRef<WebGLBuffer | null>(null);
+
+    const rTreeRef = useRef<RBush<PointItem>>(new RBush<PointItem>());
+    const rCoarseTreeRef = useRef<RBush<PointItem>>(new RBush<PointItem>());
 
     const fullCountRef = useRef<number>(0);
     const coarseCountRef = useRef<number>(0);
@@ -26,7 +31,26 @@ export default function ScatterPlotPage() {
         fullCountRef,
         coarseCountRef,
         worldSize,
+        rTreeRef,
+        rCoarseTreeRef,
     };
+
+    useEffect(() => {
+        const gl = glRef.current!;
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, fullBufRef.current);
+        gl.bufferData(gl.ARRAY_BUFFER, MAX_TOTAL_POINTS * 2 * 4, gl.DYNAMIC_DRAW);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, coarseBufRef.current);
+        gl.bufferData(gl.ARRAY_BUFFER, MAX_TOTAL_POINTS * 2 * 4, gl.DYNAMIC_DRAW);
+
+        fullCountRef.current = 0;
+        coarseCountRef.current = 0;
+
+        // Reset counts
+        fullCountRef.current = 0;
+        coarseCountRef.current = 0;
+    }, []);
 
     return (
         <>

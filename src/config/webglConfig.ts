@@ -1,3 +1,6 @@
+export const MAX_TOTAL_POINTS = 1_000_000;
+export const MAX_CHUNK_SIZE = 1_000;
+
 export const VERTEX_SOURCE = `#version 300 es
     precision highp float;
     layout(location = 0) in vec2 a_pos;
