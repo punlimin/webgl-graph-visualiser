@@ -14,6 +14,8 @@ interface Props {
     setDrawMode: (value: DrawModeType) => void;
     useAutoLOD: boolean;
     setUseAutoLOD: (value: boolean) => void;
+    showDebug: boolean;
+    setShowDebug: (value: boolean) => void;
 }
 
 export default function Controls({
@@ -24,6 +26,8 @@ export default function Controls({
     setDrawMode,
     useAutoLOD,
     setUseAutoLOD,
+    showDebug,
+    setShowDebug,
 }: Props) {
     const {
         glRef,
@@ -364,6 +368,19 @@ export default function Controls({
                 <div>
                     <div className="text-xs text-primary-600">{statusText}</div>
                     <div className="text-xs text-primary-500">Coarse points: {coarseCount}</div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <label htmlFor="auto" className="text-xs text-primary-600">
+                        <input
+                            id="auto"
+                            type="checkbox"
+                            checked={showDebug}
+                            className="mr-1"
+                            onChange={e => setShowDebug(e.target.checked)}
+                        />
+                        Show Debug
+                    </label>
                 </div>
             </div>
         </div>

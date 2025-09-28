@@ -5,17 +5,25 @@ import { DrawModeType, PointItem, WebGLRef } from "@/types/webgl";
 import { createGLProgram } from "@/utils/webglUtils";
 import RBush from "rbush";
 import React, { useEffect, useRef, useState } from "react";
+import DebugOverlay from "./DebugOverlay";
 
 interface Props {
     webglRef: WebGLRef;
     pointSize: number;
     drawMode: DrawModeType;
     useAutoLOD: boolean;
+    showDebug: boolean;
 }
 
 const LOD_THRESHOLD = 0.6;
 
-export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoLOD }: Props) {
+export default function CanvasRenderer({
+    webglRef,
+    pointSize,
+    drawMode,
+    useAutoLOD,
+    showDebug,
+}: Props) {
     const {
         glRef,
         fullBufRef,
@@ -39,6 +47,8 @@ export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoL
     const dirty = useRef<boolean>(true);
 
     const [currentDrawMode, setCurrentDrawMode] = useState<DrawModeType>();
+    const [fps, setFps] = useState<number>(0);
+    const [pointsInViewport, setPointsInViewport] = useState<number>(0);
 
     const uniformsRef = useRef<{
         u_canvas: WebGLUniformLocation | null;
@@ -204,11 +214,23 @@ export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoL
 
         resize();
 
+        let lastTime = performance.now();
+        let frames = 0;
+
         let requestAnimFrameId = 0;
         function render() {
             requestAnimFrameId = requestAnimationFrame(render);
 
             const gl = glRef.current;
+
+            frames++;
+            const now = performance.now();
+            if (now - lastTime >= 1000) {
+                setFps((frames * 1000) / (now - lastTime));
+                frames = 0;
+                lastTime = now;
+            }
+
             if (!gl || !dirty.current) return;
             dirty.current = false;
 
@@ -230,6 +252,7 @@ export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoL
 
             if (wantCoarse) {
                 const visible = getVisiblePoints(rCoarseTreeRef.current);
+                setPointsInViewport(visible.length);
                 const numPoints = visible.length / 2;
                 if (numPoints > 0) {
                     gl.bindBuffer(gl.ARRAY_BUFFER, coarseBufRef.current);
@@ -241,6 +264,8 @@ export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoL
                 }
             } else {
                 const visible = getVisiblePoints(rTreeRef.current);
+                setPointsInViewport(visible.length);
+
                 const numPoints = visible.length / 2;
                 if (numPoints > 0) {
                     gl.bindBuffer(gl.ARRAY_BUFFER, fullBufRef.current);
@@ -276,13 +301,16 @@ export default function CanvasRenderer({ webglRef, pointSize, drawMode, useAutoL
                 <div className="text-sm text-primary-600">Canvas (pan: drag, zoom: wheel)</div>
                 <div className="text-xs text-primary-500">Tip: use Auto LOD for fast overview</div>
             </div>
-            <div className="flex-1 rounded-xl overflow-hidden border border-primary-50">
-                <canvas ref={canvasRef} className="w-full h-[70vh] block bg-primary-50" />
+            <div className="relative flex-1 rounded-xl overflow-hidden border border-primary-50">
+                <canvas ref={canvasRef} className="w-full h-full block bg-primary-50" />
+                {showDebug && (
+                    <DebugOverlay
+                        fps={fps}
+                        pointsInViewport={pointsInViewport}
+                        drawMode={currentDrawMode}
+                    />
+                )}
             </div>
-
-            <div className="mt-3 px-3 text-xs text-primary-500">{`Current Draw Mode: ${
-                currentDrawMode?.toUpperCase() ?? "-"
-            }`}</div>
         </>
     );
 }

@@ -11,6 +11,7 @@ export default function ScatterPlotPage() {
     const [pointSize, setPointSize] = useState<number>(4);
     const [drawMode, setDrawMode] = useState<DrawModeType>(DrawModeType.AUTO);
     const [useAutoLOD, setUseAutoLOD] = useState<boolean>(true);
+    const [showDebug, setShowDebug] = useState<boolean>(true);
 
     const glRef = useRef<WebGL2RenderingContext | null>(null);
     const fullBufRef = useRef<WebGLBuffer | null>(null);
@@ -65,6 +66,8 @@ export default function ScatterPlotPage() {
                         setDrawMode={setDrawMode}
                         useAutoLOD={useAutoLOD}
                         setUseAutoLOD={setUseAutoLOD}
+                        showDebug={showDebug}
+                        setShowDebug={setShowDebug}
                     />
                 </section>
 
@@ -75,6 +78,7 @@ export default function ScatterPlotPage() {
                         pointSize={pointSize}
                         drawMode={drawMode}
                         useAutoLOD={useAutoLOD}
+                        showDebug={showDebug}
                     />
                 </section>
             </main>
