@@ -11,13 +11,13 @@ export const navConfig: NavItem[] = [
         label: "Home",
     },
     {
-        url: "/about",
-        title: "About",
-        label: "About",
+        url: "/scatter",
+        title: "Scatter: Progressive / LOD",
+        label: "Scatter Plot",
     },
     {
-        url: "/scatter",
-        title: "WebGL Scatter — Progressive / LOD",
-        label: "Scatter Plot",
+        url: "/imageViewer",
+        title: "Image Viewer",
+        label: "Image Viewer",
     },
 ];

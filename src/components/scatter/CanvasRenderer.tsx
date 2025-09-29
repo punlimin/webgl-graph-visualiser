@@ -1,6 +1,6 @@
 "use client";
 
-import { FRAGMENT_SOURCE, VERTEX_SOURCE } from "@/config/webglConfig";
+import { POINTS_FRAGMENT_SOURCE, POINTS_VERTEX_SOURCE } from "@/config/webglConfig";
 import { DrawModeType, PointItem, WebGLRef } from "@/types/webgl";
 import { createGLProgram } from "@/utils/webglUtils";
 import RBush from "rbush";
@@ -96,7 +96,7 @@ export default function CanvasRenderer({
         }
         glRef.current = gl;
 
-        const program = createGLProgram(gl, VERTEX_SOURCE, FRAGMENT_SOURCE);
+        const program = createGLProgram(gl, POINTS_VERTEX_SOURCE, POINTS_FRAGMENT_SOURCE);
         programRef.current = program;
 
         // Buffers + VAOs
